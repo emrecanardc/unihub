@@ -3,11 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WidgetTest extends StatelessWidget {
   const WidgetTest({super.key});
+
   Stream<QuerySnapshot> getEtkinliklerStream() {
     return FirebaseFirestore.instance
-        .collection('kulüpler')
-        .doc('matematikkulubu')
-        .collection('etkinlikler')
+        .collection('clubs') 
+        .doc('cinema_photo_club')
+        .collection('events')
         .snapshots();
   }
 
@@ -15,20 +16,17 @@ class WidgetTest extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: getEtkinliklerStream(),
-
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        // --- DURUM 2: Bir Hata Oluştu ---
         if (snapshot.hasError) {
           return const Center(
             child: Text('Bir hata oluştu. Lütfen tekrar deneyin.'),
           );
         }
 
-        // --- DURUM 3: Veri Geldi ama Boş ---
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(
             child: Text(
@@ -37,16 +35,19 @@ class WidgetTest extends StatelessWidget {
             ),
           );
         }
+
         final etkinlikler = snapshot.data!.docs;
         return ListView.builder(
           itemCount: etkinlikler.length,
           itemBuilder: (BuildContext context, int index) {
             var etkinlikVerisi =
                 etkinlikler[index].data() as Map<String, dynamic>;
-            String baslik = etkinlikVerisi['baslik'] ?? 'Başlık Yok';
-            String aciklama = etkinlikVerisi['aciklama'] ?? 'Açıklama Yok';
+            
+            
+            String baslik = etkinlikVerisi['eventName'] ?? 'Başlık Yok';
+            String aciklama = etkinlikVerisi['description'] ?? 'Açıklama Yok';
+
             return Container(
-              // Bu Container, senin orijinal tasarımın
               margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -57,7 +58,7 @@ class WidgetTest extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    baslik, // <-- VERİ BURAYA GELİYOR
+                    baslik, 
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 22,
@@ -66,11 +67,11 @@ class WidgetTest extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    aciklama, // <-- VERİ BURAYA GELİYOR
+                    aciklama, 
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.grey[800],
-                      height: 1.4, // Satır yüksekliği
+                      height: 1.4,
                     ),
                   ),
                 ],
