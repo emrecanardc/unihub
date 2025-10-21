@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:unihub/screen_test.dart';
 import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(const MyApp());
+  runApp(const ScreenTest());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -27,28 +33,28 @@ class MyApp extends StatelessWidget {
         ),
         // Bu widget, gelecekte gelecek bir veri için bekler ve duruma göre ekranı çizer.
         body: FutureBuilder<DocumentSnapshot>( // Ne tür bir veri beklediğini belirtmek iyidir.
-          // 1. SİPARİŞ: Firestore'dan 'test/ilk_veri' dokümanını getirmesini istiyoruz.
+          // dokümanını getirmesini istiyoruz.
           future: FirebaseFirestore.instance
               .collection('test')
               .doc('il_Veri')
               .get(),
               
-          // 2. GARSON: Siparişin durumuna göre ne yapacağını söyleyen kısım.
+          //  duruma göre ne yapacağını söyleyen kısım.
           builder: (context, snapshot) {
 
-            // DURUM A: Sipariş yolda, hala hazırlanıyor... ⏳
+            // hazırlanıyor... 
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Center(child: CircularProgressIndicator()); // Yükleniyor animasyonu göster.
             }
 
-            // DURUM B: Siparişte bir sorun çıktı! ❌
+            //  bir sorun çıktı! 
             if (snapshot.hasError) {
               return Center(child: Text("Bir hata oluştu!")); // Hata mesajı göster.
             }
 
-            // DURUM C: Sipariş geldi ve içinde veri var! ✅
+            // içinde veri var! 
             if (snapshot.hasData && snapshot.data!.exists) {
-              // Gelen veriyi (paketi) açıp içinden "mesaj" alanını alıyoruz.
+              
               var data = snapshot.data!.data() as Map<String, dynamic>;
               String mesaj = data['mesaj'] ?? "Mesaj bulunamadı"; // Eğer 'mesaj' yoksa varsayılan metin.
 
@@ -61,7 +67,7 @@ class MyApp extends StatelessWidget {
               );
             }
 
-            // DURUM D: Sipariş geldi ama içi boşmuş (doküman bulunamadı).
+            // (doküman bulunamadı).
             return Center(child: Text("Veri bulunamadı."));
           },
         ),
