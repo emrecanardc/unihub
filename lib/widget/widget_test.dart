@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WidgetTest extends StatelessWidget {
-  const WidgetTest({super.key});
+  const WidgetTest({super.key,required this.kulupismi});
+ final String kulupismi;
 
   Stream<QuerySnapshot> getEtkinliklerStream() {
     return FirebaseFirestore.instance
         .collection('clubs') 
-        .doc('cinema_photo_club')
+        .doc(kulupismi)
         .collection('events')
         .snapshots();
   }

@@ -3,13 +3,20 @@ import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:unihub/widget/widget_test.dart';
 
 class ScreenTest extends StatefulWidget {
-  const ScreenTest({super.key});
+  final String kulupId;
+  final String kulupismi;
+  const ScreenTest({
+    super.key,
+    required this.kulupId,
+    required this.kulupismi,
+  });
 
   @override
   State<ScreenTest> createState() => _ScreenTestState();
 }
 
 class _ScreenTestState extends State<ScreenTest> {
+  
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -19,9 +26,14 @@ class _ScreenTestState extends State<ScreenTest> {
         appBar: AppBar(
           backgroundColor: Colors.cyan,
           centerTitle: true,
-          leading: Icon(Icons.close, color: Colors.white),
+          leading: BackButton(
+            onPressed: Navigator.of(context).pop,
+
+            
+          ),
+          
           title: Text(
-            "Külüp İsimi",
+            widget.kulupismi,
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           ),
         ),
@@ -30,13 +42,13 @@ class _ScreenTestState extends State<ScreenTest> {
             Container(
               width: 400,
               height: 300,
-              child: WidgetTest(),
+              child: WidgetTest(kulupismi: widget.kulupId,),
               color: Colors.amber,
             ),
             SizedBox(height: 10,),
             Container(width: 400,
               height: 300,
-              child: WidgetTest(),
+              
               color: Colors.blue,)
           ],
           
