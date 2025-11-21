@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:unihub/login.dart';
+import 'package:unihub/register.dart';
 import 'package:unihub/widget/widget_Test2.dart';
 
 Future<void> main() async {
@@ -8,23 +9,25 @@ Future<void> main() async {
 
   await Firebase.initializeApp();
 
-  runApp(const Login());
+  runApp(const girisEkrani());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Login()
-
-      // body: Container(width: 400,height: 500,padding: EdgeInsets.all(10),child: WidgetTest2(),)
+      debugShowCheckedModeBanner: false,
+      title: 'UniHub',
+      home: Scaffold(
+        body: Container(
+          width: 400,
+          height: 500,
+          padding: EdgeInsets.all(10),
+          child: WidgetTest2(),
+        ),
+      ),
     );
   }
 }
