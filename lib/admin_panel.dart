@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:unihub/utils/hex_color.dart';
 
 class AdminPanel extends StatefulWidget {
   final String kulupId;
   final String kulupismi;
   final Color primaryColor;
-  final String currentUserRole; // Giriş yapan kişinin rolü
+  final String currentUserRole;
 
   const AdminPanel({
     super.key,
@@ -22,71 +25,93 @@ class AdminPanel extends StatefulWidget {
 class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
   late TabController _tabController;
 
-  // Hangi sekmelerin gösterileceğini tutan liste
-  late List<Widget> _tabs;
-  late List<Widget> _tabViews;
-
   // Form Kontrolcüleri
   final _eventNameController = TextEditingController();
   final _eventDescController = TextEditingController();
   final _eventLocationController = TextEditingController();
   DateTime? _selectedDate;
 
-  // Kulüp Ayarları Kontrolcüleri
   final _clubNameController = TextEditingController();
+  final _shortNameController = TextEditingController();
+  final _categoryController = TextEditingController();
   final _clubDescController = TextEditingController();
-  String? _selectedColorHex; // Seçilen yeni renk kodu
+
+  Color _pickerColor = Colors.cyan;
+  Color _currentColor = Colors.cyan;
+  String _selectedIconKey = 'groups';
+
+  final Map<String, IconData> _clubIcons = {
+    'groups': Icons.groups,
+    'school': Icons.school,
+    'science': Icons.science,
+    'sports_soccer': Icons.sports_soccer,
+    'music_note': Icons.music_note,
+    'brush': Icons.brush,
+    'computer': Icons.computer,
+    'book': Icons.book,
+    'camera_alt': Icons.camera_alt,
+    'theater_comedy': Icons.theater_comedy,
+    'eco': Icons.eco,
+    'gavel': Icons.gavel,
+    'medication': Icons.medication,
+    'work': Icons.work,
+    'flight': Icons.flight,
+    'restaurant': Icons.restaurant,
+    'volunteer_activism': Icons.volunteer_activism,
+    'psychology': Icons.psychology,
+    'pets': Icons.pets,
+    'sports_esports': Icons.sports_esports,
+  };
 
   @override
   void initState() {
     super.initState();
     _setupTabsByRole();
-    _loadClubSettings(); // Mevcut ayarları yükle
+    _loadClubSettings();
   }
 
-  // ROL KONTROLÜNE GÖRE SEKMELERİ AYARLA
   void _setupTabsByRole() {
-    _tabs = [];
-    _tabViews = [];
+    List<Widget> tabs = [];
+    List<Widget> tabViews = [];
 
-    // 1. HERKES İÇİN: İstekler Sekmesi
-    _tabs.add(const Tab(icon: Icon(Icons.person_add), text: "İstekler"));
-    _tabViews.add(_buildRequestsTab());
+    tabs.add(const Tab(icon: Icon(Icons.person_add), text: "İstekler"));
+    tabViews.add(_buildRequestsTab());
 
-    // 2. BAŞKAN VE YARDIMCISI İÇİN: Etkinlikler Sekmesi
     if (widget.currentUserRole == 'baskan' ||
         widget.currentUserRole == 'baskan_yardimcisi') {
-      _tabs.add(const Tab(icon: Icon(Icons.event), text: "Etkinlikler"));
-      _tabViews.add(_buildEventsTab());
+      tabs.add(const Tab(icon: Icon(Icons.event), text: "Etkinlikler"));
+      tabViews.add(_buildEventsTab());
     }
 
-    // 3. SADECE BAŞKAN İÇİN: Üyeler ve Ayarlar
     if (widget.currentUserRole == 'baskan') {
-      _tabs.add(const Tab(icon: Icon(Icons.people), text: "Üyeler"));
-      _tabViews.add(_buildMembersTab());
+      tabs.add(const Tab(icon: Icon(Icons.people), text: "Üyeler"));
+      tabViews.add(_buildMembersTab());
 
-      _tabs.add(const Tab(icon: Icon(Icons.settings), text: "Ayarlar"));
-      _tabViews.add(_buildSettingsTab());
+      tabs.add(const Tab(icon: Icon(Icons.settings), text: "Ayarlar"));
+      tabViews.add(_buildSettingsTab());
     }
 
-    _tabController = TabController(length: _tabs.length, vsync: this);
+    _tabController = TabController(length: tabs.length, vsync: this);
   }
 
-  // Mevcut ayarları çekip kutucuklara doldurur
   void _loadClubSettings() async {
     var doc = await FirebaseFirestore.instance
         .collection('clubs')
         .doc(widget.kulupId)
         .get();
-    if (doc.exists) {
+    if (doc.exists && mounted) {
       var data = doc.data()!;
-      _clubNameController.text = data['clubName'] ?? '';
-      _clubDescController.text = data['description'] ?? '';
-      if (data['theme'] != null) {
-        setState(() {
-          _selectedColorHex = data['theme']['primaryColor'];
-        });
-      }
+      setState(() {
+        _clubNameController.text = data['clubName'] ?? '';
+        _shortNameController.text = data['shortName'] ?? '';
+        _categoryController.text = data['category'] ?? '';
+        _clubDescController.text = data['description'] ?? '';
+        _selectedIconKey = data['icon'] ?? 'groups';
+        if (data['theme'] != null && data['theme']['primaryColor'] != null) {
+          _currentColor = hexToColor(data['theme']['primaryColor']);
+          _pickerColor = _currentColor;
+        }
+      });
     }
   }
 
@@ -97,139 +122,285 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
     _eventDescController.dispose();
     _eventLocationController.dispose();
     _clubNameController.dispose();
+    _shortNameController.dispose();
+    _categoryController.dispose();
     _clubDescController.dispose();
     super.dispose();
   }
 
-  // --- FONKSİYONLAR ---
+  // --- RENK VE STİL FONKSİYONLARI (YENİLENDİ) ---
 
-  // Üye Rolünü Değiştirme (Maksimum Sayı Kontrollü)
-  Future<void> _changeMemberRole(String userId, String newRole) async {
-    // Eğer Başkan Yardımcısı atanacaksa sayı kontrolü yap
-    if (newRole == 'baskan_yardimcisi') {
-      var snapshot = await FirebaseFirestore.instance
-          .collection('clubs')
-          .doc(widget.kulupId)
-          .collection('members')
-          .where('role', isEqualTo: 'baskan_yardimcisi')
-          .get();
-
-      if (snapshot.docs.length >= 2) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Hata: En fazla 2 Başkan Yardımcısı olabilir!"),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return; // İşlemi iptal et
-      }
-    }
-
-    // Rolü güncelle
-    await FirebaseFirestore.instance
-        .collection('clubs')
-        .doc(widget.kulupId)
-        .collection('members')
-        .doc(userId)
-        .update({'role': newRole});
-
-    if (mounted) {
-      Navigator.pop(context); // Dialogu kapat
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Rol güncellendi: $newRole"),
-          backgroundColor: Colors.green,
-        ),
-      );
+  // Rol Önceliği (Sıralama için)
+  int _getRolePriority(String? role) {
+    switch (role) {
+      case 'baskan':
+        return 0;
+      case 'baskan_yardimcisi':
+        return 1;
+      case 'koordinator':
+        return 2;
+      default:
+        return 3;
     }
   }
 
-  // Kulüp Ayarlarını Kaydet
+  // Rol Stili (Renk Geçişleri ve İkonlar)
+  Map<String, dynamic> _getRoleStyle(String role) {
+    switch (role) {
+      case 'baskan':
+        return {
+          'gradient': const LinearGradient(
+            colors: [Color(0xFFFFD700), Color(0xFFFF8C00)], // Altın -> Turuncu
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          'icon': Icons.emoji_events,
+          'label': 'Kulüp Başkanı',
+        };
+      case 'baskan_yardimcisi':
+        return {
+          'gradient': const LinearGradient(
+            colors: [Color(0xFFE0E0E0), Color(0xFF9E9E9E)], // Gümüş -> Koyu Gri
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          'icon': Icons.star,
+          'label': 'Başkan Yardımcısı',
+        };
+      case 'koordinator':
+        return {
+          'gradient': const LinearGradient(
+            colors: [Color(0xFFFFCC80), Color(0xFF8D6E63)], // Bronz -> Kahve
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          'icon': Icons.bolt,
+          'label': 'Koordinatör',
+        };
+      default:
+        return {
+          'gradient': LinearGradient(
+            colors: [
+              Colors.blueGrey.shade300,
+              Colors.blueGrey.shade500,
+            ], // Mavi/Gri
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          'icon': Icons.person,
+          'label': 'Üye',
+        };
+    }
+  }
+
+  // --- DİĞER FONKSİYONLAR ---
+  String _colorToHex(Color color) {
+    return '0xFF${color.value.toRadixString(16).padLeft(8, '0').toUpperCase().substring(2)}';
+  }
+
   Future<void> _saveSettings() async {
     try {
+      Color secondaryColor = Color.alphaBlend(
+        Colors.white.withOpacity(0.6),
+        _currentColor,
+      );
       await FirebaseFirestore.instance
           .collection('clubs')
           .doc(widget.kulupId)
           .update({
             'clubName': _clubNameController.text.trim(),
+            'shortName': _shortNameController.text.trim().toUpperCase(),
+            'category': _categoryController.text.trim(),
             'description': _clubDescController.text.trim(),
-            'theme.primaryColor':
-                _selectedColorHex ?? "0xFF00BCD4", // Varsayılan renk
+            'icon': _selectedIconKey,
+            'logoUrl': FieldValue.delete(),
+            'theme': {
+              'primaryColor': _colorToHex(_currentColor),
+              'secondaryColor': _colorToHex(secondaryColor),
+            },
           });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Ayarlar güncellendi!"),
+            content: Text("Ayarlar başarıyla güncellendi!"),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Hata oluştu"),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red),
       );
     }
   }
 
-  // Etkinlik Silme
-  Future<void> _deleteEvent(String eventId) async {
-    await FirebaseFirestore.instance
-        .collection('clubs')
-        .doc(widget.kulupId)
-        .collection('events')
-        .doc(eventId)
-        .delete();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Etkinlik silindi."),
-          backgroundColor: Colors.orange,
+  void _showColorPickerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Kulüp Rengini Seç'),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: _pickerColor,
+            onColorChanged: (color) => setState(() => _pickerColor = color),
+            enableAlpha: false,
+            displayThumbColor: true,
+            paletteType: PaletteType.hsvWithHue,
+          ),
         ),
-      );
-    }
+        actions: <Widget>[
+          ElevatedButton(
+            child: const Text('Tamam'),
+            onPressed: () {
+              setState(() => _currentColor = _pickerColor);
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
-  // Üye İşlemleri (Onay/Red)
-  Future<void> _uyeIslemi(
-    String userId,
-    Map<String, dynamic>? userData,
-    bool onayla,
+  Future<void> _transferPresidency(
+    String targetUserId,
+    String targetUserName,
   ) async {
-    if (onayla && userData != null) {
-      await FirebaseFirestore.instance
-          .collection('clubs')
-          .doc(widget.kulupId)
-          .collection('members')
-          .doc(userId)
-          .set({
-            'username': userData['displayName'] ?? 'İsimsiz',
-            'userEmail': userData['email'] ?? '',
-            'role': 'uye',
-            'joinDate': FieldValue.serverTimestamp(),
-          });
-    }
-    await FirebaseFirestore.instance
-        .collection('clubs')
-        .doc(widget.kulupId)
-        .collection('membershipRequests')
-        .doc(userId)
-        .delete();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(onayla ? "Üye onaylandı!" : "İstek reddedildi."),
-          backgroundColor: onayla ? Colors.green : Colors.orange,
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Başkanlığı Devret"),
+        content: Text(
+          "Dikkat! Başkanlığı '$targetUserName' adlı üyeye devretmek üzeresiniz.\n\nOnaylıyor musunuz?",
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("İptal"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Evet, Devret"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final batch = FirebaseFirestore.instance.batch();
+        var targetRef = FirebaseFirestore.instance
+            .collection('clubs')
+            .doc(widget.kulupId)
+            .collection('members')
+            .doc(targetUserId);
+        batch.update(targetRef, {'role': 'baskan'});
+        var myRef = FirebaseFirestore.instance
+            .collection('clubs')
+            .doc(widget.kulupId)
+            .collection('members')
+            .doc(currentUser.uid);
+        batch.update(myRef, {'role': 'uye'});
+        await batch.commit();
+        if (mounted) {
+          Navigator.pop(context);
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Başkanlık $targetUserName'e devredildi."),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
-  // Etkinlik Oluşturma
+  Future<void> _changeMemberRole(String userId, String newRole) async {
+    await FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.kulupId)
+        .collection('members')
+        .doc(userId)
+        .update({'role': newRole});
+    if (mounted) Navigator.pop(context);
+  }
+
+  void _showRoleDialog(String userId, String userName, String currentRole) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == currentUserId) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("İşlem Engellendi"),
+          content: const Text("Kendi rolünüzü değiştiremezsiniz."),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Tamam"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text("$userName için Rol Seç"),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => _changeMemberRole(userId, 'uye'),
+            child: const Text("Üye Yap"),
+          ),
+          SimpleDialogOption(
+            onPressed: () => _changeMemberRole(userId, 'koordinator'),
+            child: const Text("Koordinatör Yap"),
+          ),
+          SimpleDialogOption(
+            onPressed: () => _changeMemberRole(userId, 'baskan_yardimcisi'),
+            child: const Text("Başkan Yardımcısı Yap"),
+          ),
+          if (widget.currentUserRole == 'baskan') ...[
+            const Divider(),
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context);
+                _transferPresidency(userId, userName);
+              },
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.red,
+                    size: 20,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    "Başkanlığı Devret",
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _createEvent() async {
     if (_eventNameController.text.isNotEmpty && _selectedDate != null) {
       await FirebaseFirestore.instance
@@ -257,8 +428,42 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
     }
   }
 
-  // --- ARAYÜZ (UI) ---
+  Future<void> _deleteEvent(String eventId) async {
+    await FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.kulupId)
+        .collection('events')
+        .doc(eventId)
+        .delete();
+  }
 
+  Future<void> _uyeIslemi(
+    String userId,
+    Map<String, dynamic>? userData,
+    bool onayla,
+  ) async {
+    if (onayla && userData != null) {
+      await FirebaseFirestore.instance
+          .collection('clubs')
+          .doc(widget.kulupId)
+          .collection('members')
+          .doc(userId)
+          .set({
+            'userName': userData['displayName'] ?? 'İsimsiz',
+            'userEmail': userData['email'] ?? '',
+            'role': 'uye',
+            'joinDate': FieldValue.serverTimestamp(),
+          });
+    }
+    await FirebaseFirestore.instance
+        .collection('clubs')
+        .doc(widget.kulupId)
+        .collection('membershipRequests')
+        .doc(userId)
+        .delete();
+  }
+
+  // --- UI BUILD ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -269,21 +474,42 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
           "${widget.kulupismi} Yönetimi",
           style: const TextStyle(color: Colors.white, fontSize: 18),
         ),
-        leading: const BackButton(color: Colors.white),
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: true, // Sekmeler sığmazsa kaydırılabilir olsun
+          isScrollable: true,
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
-          tabs: _tabs,
+          tabs: _getTabs(),
         ),
       ),
-      body: TabBarView(controller: _tabController, children: _tabViews),
+      body: TabBarView(controller: _tabController, children: _getTabViews()),
     );
   }
 
-  // 1. TAB: İSTEKLER
+  List<Widget> _getTabs() {
+    List<Widget> tabs = [
+      const Tab(icon: Icon(Icons.person_add), text: "İstekler"),
+    ];
+    if (widget.currentUserRole != 'uye')
+      tabs.add(const Tab(icon: Icon(Icons.event), text: "Etkinlikler"));
+    if (widget.currentUserRole == 'baskan') {
+      tabs.add(const Tab(icon: Icon(Icons.people), text: "Üyeler"));
+      tabs.add(const Tab(icon: Icon(Icons.settings), text: "Ayarlar"));
+    }
+    return tabs;
+  }
+
+  List<Widget> _getTabViews() {
+    List<Widget> views = [_buildRequestsTab()];
+    if (widget.currentUserRole != 'uye') views.add(_buildEventsTab());
+    if (widget.currentUserRole == 'baskan') {
+      views.add(_buildMembersTab());
+      views.add(_buildSettingsTab());
+    }
+    return views;
+  }
+
   Widget _buildRequestsTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -301,7 +527,6 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
             var data = doc.data() as Map<String, dynamic>;
             return Card(
               child: ListTile(
-                leading: const Icon(Icons.person_outline),
                 title: Text(data['displayName'] ?? "İsimsiz"),
                 subtitle: Text(data['email'] ?? ""),
                 trailing: Row(
@@ -325,18 +550,11 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
     );
   }
 
-  // 2. TAB: ETKİNLİKLER (Oluşturma ve Silme)
   Widget _buildEventsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Yeni Etkinlik Ekle",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
           TextField(
             controller: _eventNameController,
             decoration: const InputDecoration(
@@ -360,7 +578,6 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 10),
           ListTile(
             title: Text(
               _selectedDate == null
@@ -378,22 +595,8 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
               if (picked != null) setState(() => _selectedDate = picked);
             },
           ),
-          ElevatedButton(
-            onPressed: _createEvent,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: widget.primaryColor,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("Yayınla"),
-          ),
-
-          const Divider(height: 40, thickness: 2),
-          const Text(
-            "Mevcut Etkinlikler",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-
-          // Mevcut Etkinlikleri Listeleme ve Silme
+          ElevatedButton(onPressed: _createEvent, child: const Text("Yayınla")),
+          const Divider(),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('clubs')
@@ -425,7 +628,7 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
     );
   }
 
-  // 3. TAB: ÜYELER (Rol Değiştirme)
+  // --- YENİLENEN TASARIM: ÜYELER SEKMESİ ---
   Widget _buildMembersTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -436,32 +639,91 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
       builder: (context, snapshot) {
         if (!snapshot.hasData)
           return const Center(child: CircularProgressIndicator());
-        return ListView.builder(
-          itemCount: snapshot.data!.docs.length,
+
+        var docs = snapshot.data!.docs;
+        // Sıralama: Başkan -> Yardımcı -> Koordinatör -> Üye
+        docs.sort((a, b) {
+          var roleA = (a.data() as Map<String, dynamic>)['role'];
+          var roleB = (b.data() as Map<String, dynamic>)['role'];
+          return _getRolePriority(roleA).compareTo(_getRolePriority(roleB));
+        });
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: docs.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            var doc = snapshot.data!.docs[index];
+            var doc = docs[index];
             var data = doc.data() as Map<String, dynamic>;
-            String currentRole = data['role'] ?? 'uye';
+            String name = data['userName'] ?? data['username'] ?? "?";
+            String role = data['role'] ?? 'uye';
+            var style = _getRoleStyle(role);
 
-            // Kendi rolünü değiştiremesin (Başkan kendini silemez)
-            // Bu basit bir güvenlik önlemidir.
-
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  child: Text(
-                    data['username'] != null
-                        ? data['username'].substring(0, 1)
-                        : "?",
-                  ),
+            return GestureDetector(
+              onTap: () => _showRoleDialog(doc.id, name, role),
+              child: Container(
+                width: double.infinity,
+                height: 70, // Sabit, şık bir yükseklik
+                decoration: BoxDecoration(
+                  gradient: style['gradient'], // Rol'e özel renk geçişi
+                  borderRadius: BorderRadius.circular(
+                    30,
+                  ), // Yuvarlak "Chip" tasarımı (Resimdeki gibi)
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                title: Text(
-                  "${data['username']} (${_getRoleName(currentRole)})",
+                child: Row(
+                  children: [
+                    const SizedBox(width: 20),
+                    // Sol İkon
+                    Icon(style['icon'], color: Colors.white, size: 28),
+                    const SizedBox(width: 20),
+                    // İsim ve Görev
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            style['label'], // Rol ismi (Örn: Kulüp Başkanı)
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Düzenle İkonu (Sağda)
+                    Container(
+                      margin: const EdgeInsets.only(right: 10),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.edit,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ],
                 ),
-                subtitle: Text(data['userEmail'] ?? ""),
-                trailing: const Icon(Icons.edit),
-                onTap: () =>
-                    _showRoleDialog(doc.id, data['username'], currentRole),
               ),
             );
           },
@@ -470,128 +732,193 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
     );
   }
 
-  String _getRoleName(String role) {
-    switch (role) {
-      case 'baskan':
-        return '👑 Başkan';
-      case 'baskan_yardimcisi':
-        return '⭐ Bşk. Yrd.';
-      case 'koordinator':
-        return '⚡ Koordinatör';
-      default:
-        return 'Üye';
-    }
-  }
-
-  // Rol Atama Penceresi
-  void _showRoleDialog(String userId, String userName, String currentRole) {
-    showDialog(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text("$userName için Rol Seç"),
-        children: [
-          _roleOption(userId, 'uye', "Üye (Yetkilerini Al)"),
-          _roleOption(userId, 'koordinator', "⚡ Koordinatör Yap"),
-          _roleOption(userId, 'baskan_yardimcisi', "⭐ Başkan Yardımcısı Yap"),
-        ],
-      ),
-    );
-  }
-
-  Widget _roleOption(String userId, String roleKey, String label) {
-    return SimpleDialogOption(
-      padding: const EdgeInsets.all(15),
-      child: Text(label, style: const TextStyle(fontSize: 16)),
-      onPressed: () => _changeMemberRole(userId, roleKey),
-    );
-  }
-
-  // 4. TAB: AYARLAR (Renk ve İsim)
   Widget _buildSettingsTab() {
-    List<String> colors = [
-      "0xFFF44336",
-      "0xFFE91E63",
-      "0xFF9C27B0",
-      "0xFF2196F3",
-      "0xFF00BCD4",
-      "0xFF4CAF50",
-      "0xFFFFC107",
-      "0xFFFF5722",
-      "0xFF607D8B",
-      "0xFF000000",
-    ];
-
+    /* ...Eski kodun aynısı... */
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Kulüp Bilgileri",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 15),
-          TextField(
-            controller: _clubNameController,
-            decoration: const InputDecoration(
-              labelText: "Kulüp Adı",
-              border: OutlineInputBorder(),
+          _buildSectionTitle("Kulüp Kimliği"),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-          ),
-          const SizedBox(height: 15),
-          TextField(
-            controller: _clubDescController,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: "Açıklama",
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 30),
-          const Text(
-            "Tema Rengi",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            children: colors.map((hex) {
-              bool isSelected = _selectedColorHex == hex;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedColorHex = hex),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Color(
-                      int.parse(hex.replaceFirst('0x', 'ff'), radix: 16),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _clubNameController,
+                    decoration: const InputDecoration(
+                      labelText: "Kulüp Adı",
+                      border: OutlineInputBorder(),
                     ),
-                    shape: BoxShape.circle,
-                    border: isSelected
-                        ? Border.all(color: Colors.black, width: 3)
-                        : null,
                   ),
-                  child: isSelected
-                      ? const Icon(Icons.check, color: Colors.white)
-                      : null,
-                ),
-              );
-            }).toList(),
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: TextField(
+                          controller: _shortNameController,
+                          maxLength: 4,
+                          textCapitalization: TextCapitalization.characters,
+                          decoration: const InputDecoration(
+                            labelText: "Kısaltma",
+                            border: OutlineInputBorder(),
+                            counterText: "",
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: _categoryController,
+                          decoration: const InputDecoration(
+                            labelText: "Kategori",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: _clubDescController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: "Açıklama",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildSectionTitle("Görsel Kimlik"),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Kulüp İkonu",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(8),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 5,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                      itemCount: _clubIcons.length,
+                      itemBuilder: (context, index) {
+                        String key = _clubIcons.keys.elementAt(index);
+                        IconData icon = _clubIcons.values.elementAt(index);
+                        bool isSelected = _selectedIconKey == key;
+                        return GestureDetector(
+                          onTap: () => setState(() => _selectedIconKey = key),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? _currentColor.withOpacity(0.2)
+                                  : Colors.transparent,
+                              border: isSelected
+                                  ? Border.all(color: _currentColor, width: 2)
+                                  : Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              icon,
+                              color: isSelected ? _currentColor : Colors.grey,
+                              size: 28,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: _currentColor,
+                      radius: 20,
+                    ),
+                    title: const Text(
+                      "Tema Rengi",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text("Renk kodu: ${_colorToHex(_currentColor)}"),
+                    trailing: ElevatedButton(
+                      onPressed: _showColorPickerDialog,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _currentColor,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text("Değiştir"),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
             height: 50,
-            child: ElevatedButton(
+            child: ElevatedButton.icon(
               onPressed: _saveSettings,
+              icon: const Icon(Icons.save),
+              label: const Text("Tüm Değişiklikleri Kaydet"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: widget.primaryColor,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: const Text("Değişiklikleri Kaydet"),
             ),
           ),
+          const SizedBox(height: 50),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+        ),
       ),
     );
   }
