@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:unihub/register.dart';
 import 'package:unihub/widget/widget_Test2.dart'; // Ana sayfan
+import 'package:unihub/main_hub.dart';
 
 class girisEkrani extends StatefulWidget {
   const girisEkrani({super.key});
@@ -78,7 +79,7 @@ class _girisEkraniState extends State<girisEkrani> {
       if (context.mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const WidgetTest2()),
+          MaterialPageRoute(builder: (context) => const MainHub()),
         );
       }
     } on FirebaseAuthException catch (e) {

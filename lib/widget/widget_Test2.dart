@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:unihub/screen_test.dart'; // Kulüp detay sayfası
-import 'package:unihub/login.dart'; // Çıkış yapınca dönülecek yer
+import 'package:unihub/screen_test.dart';
+import 'package:unihub/login.dart';
+// 👇 YENİ: Widget'ı import et
+import 'package:unihub/widget/sponsor_banner.dart';
 
 class WidgetTest2 extends StatelessWidget {
   const WidgetTest2({super.key});
 
-  // Veritabanından kulüpleri çeken fonksiyon
   Stream<QuerySnapshot> getKluplerStream() {
     return FirebaseFirestore.instance.collection('clubs').snapshots();
   }
 
-  // Güvenli Çıkış Yapma Fonksiyonu
   Future<void> _cikisYap(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     if (context.mounted) {
-      // Giriş ekranına geri dön ve geçmişi sil
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const girisEkrani()),
@@ -28,18 +27,16 @@ class WidgetTest2 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC), // Hafif gri modern arka plan
-      // 1. Üst Bar (AppBar)
+      backgroundColor: const Color(0xFFF7F8FC),
       appBar: AppBar(
         backgroundColor: Colors.cyan,
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          "ÜniHub Kulüpler",
+          "ÜniHub",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         actions: [
-          // Çıkış Yap Butonu
           IconButton(
             onPressed: () => _cikisYap(context),
             icon: const Icon(Icons.exit_to_app, color: Colors.white),
@@ -50,7 +47,7 @@ class WidgetTest2 extends StatelessWidget {
 
       body: Column(
         children: [
-          // 2. Arama Çubuğu (Search Bar)
+          // 2. Arama Çubuğu
           Container(
             padding: const EdgeInsets.all(16.0),
             decoration: const BoxDecoration(
@@ -72,7 +69,12 @@ class WidgetTest2 extends StatelessWidget {
             ),
           ),
 
-          // 3. Kulüp Listesi (Grid)
+          // 👇 YENİ: SPONSOR BÖLÜMÜ BURAYA EKLENDİ
+          const SizedBox(height: 10), // Biraz boşluk
+          const SponsorBanner(),
+          // 👆 Demo veriler otomatik görünecek
+
+          // 3. Kulüp Listesi
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: getKluplerStream(),
@@ -110,10 +112,10 @@ class WidgetTest2 extends StatelessWidget {
                 return GridView.builder(
                   padding: const EdgeInsets.all(16),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2, // Yan yana 2 kutu
-                    crossAxisSpacing: 16, // Yatay boşluk
-                    mainAxisSpacing: 16, // Dikey boşluk
-                    childAspectRatio: 0.85, // Kartın en-boy oranı (Dikdörtgen)
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 0.85,
                   ),
                   itemCount: kulupler.length,
                   itemBuilder: (context, index) {
@@ -134,7 +136,6 @@ class WidgetTest2 extends StatelessWidget {
     );
   }
 
-  // Şık Kart Tasarımı Widget'ı
   Widget _buildClubCard(
     BuildContext context,
     String name,
@@ -159,14 +160,13 @@ class WidgetTest2 extends StatelessWidget {
               color: Colors.grey.withOpacity(0.1),
               spreadRadius: 1,
               blurRadius: 8,
-              offset: const Offset(0, 4), // Gölge yönü
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Daire İkon
             Container(
               width: 70,
               height: 70,
@@ -186,14 +186,13 @@ class WidgetTest2 extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            // Kulüp İsmi
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               child: Text(
                 name,
                 textAlign: TextAlign.center,
                 maxLines: 2,
-                overflow: TextOverflow.ellipsis, // Uzun isimleri ... yapar
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
