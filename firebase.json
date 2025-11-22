@@ -1,1 +1,37 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"unihub-a534c","appId":"1:1044448088575:android:0d5f73650ffec8205d97ca","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"unihub-a534c","configurations":{"android":"1:1044448088575:android:0d5f73650ffec8205d97ca","ios":"1:1044448088575:ios:b715b5aceccc214a5d97ca","web":"1:1044448088575:web:059b68a7158423bc5d97ca"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "unihub-a534c",
+          "appId": "1:1044448088575:android:0d5f73650ffec8205d97ca",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "unihub-a534c",
+          "configurations": {
+            "android": "1:1044448088575:android:0d5f73650ffec8205d97ca",
+            "ios": "1:1044448088575:ios:b715b5aceccc214a5d97ca",
+            "web": "1:1044448088575:web:059b68a7158423bc5d97ca"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

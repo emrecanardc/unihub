@@ -1,0 +1,239 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class WebAdminPanel extends StatefulWidget {
+  const WebAdminPanel({super.key});
+
+  @override
+  State<WebAdminPanel> createState() => _WebAdminPanelState();
+}
+
+class _WebAdminPanelState extends State<WebAdminPanel> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+// Sadece bu mail adresine sahip kişi admin panelini görebilir
+if (user?.email == "senin_mailin@admin.com") {
+  // Admin paneline yönlendir
+}
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("UniHub Super Admin Paneli 🚀"),
+        backgroundColor: Colors.black87,
+        foregroundColor: Colors.white,
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.amber,
+          unselectedLabelColor: Colors.white,
+          indicatorColor: Colors.amber,
+          tabs: const [
+            Tab(icon: Icon(Icons.store), text: "Sponsor Yönetimi"),
+            Tab(icon: Icon(Icons.groups), text: "Kulüp Oluştur"),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          SponsorManager(), // 1. Sekme: Sponsorlar
+          ClubCreator(),    // 2. Sekme: Kulüp Ekleme
+        ],
+      ),
+    );
+  }
+}
+
+// --- 1. SEKME: SPONSOR YÖNETİMİ ---
+class SponsorManager extends StatefulWidget {
+  const SponsorManager({super.key});
+
+  @override
+  State<SponsorManager> createState() => _SponsorManagerState();
+}
+
+class _SponsorManagerState extends State<SponsorManager> {
+  final _nameController = TextEditingController();
+  final _descController = TextEditingController();
+  final _urlController = TextEditingController();
+
+  // Veritabanına Sponsor Ekleme
+  Future<void> _addSponsor() async {
+    if (_nameController.text.isEmpty || _urlController.text.isEmpty) return;
+
+    await FirebaseFirestore.instance.collection('app_sponsors').add({
+      'name': _nameController.text.trim(),
+      'description': _descController.text.trim(),
+      'imageUrl': _urlController.text.trim(),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    _nameController.clear();
+    _descController.clear();
+    _urlController.clear();
+    
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sponsor Eklendi!")));
+  }
+
+  // Sponsor Silme
+  Future<void> _deleteSponsor(String id) async {
+    await FirebaseFirestore.instance.collection('app_sponsors').doc(id).delete();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        // SOL TARAFA: EKLEME FORMU
+        Expanded(
+          flex: 1,
+          child: Container(
+            color: Colors.grey[100],
+            padding: const EdgeInsets.all(30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Yeni Sponsor Ekle", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                TextField(controller: _nameController, decoration: const InputDecoration(labelText: "Firma Adı", border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextField(controller: _descController, decoration: const InputDecoration(labelText: "Kampanya Açıklaması", border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextField(controller: _urlController, decoration: const InputDecoration(labelText: "Logo/Resim URL", border: OutlineInputBorder())),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: _addSponsor,
+                  icon: const Icon(Icons.add),
+                  label: const Text("Sponsoru Yayınla"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 50)
+                  ),
+                )
+              ],
+            ),
+          ),
+        ),
+        // SAĞ TARAFA: LİSTELEME
+        Expanded(
+          flex: 2,
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('app_sponsors').orderBy('createdAt', descending: true).snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              
+              return ListView.builder(
+                padding: const EdgeInsets.all(20),
+                itemCount: snapshot.data!.docs.length,
+                itemBuilder: (context, index) {
+                  var doc = snapshot.data!.docs[index];
+                  var data = doc.data() as Map<String, dynamic>;
+                  
+                  return Card(
+                    child: ListTile(
+                      leading: Image.network(data['imageUrl'], width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (c,e,s)=>const Icon(Icons.error)),
+                      title: Text(data['name']),
+                      subtitle: Text(data['description'] ?? ""),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => _deleteSponsor(doc.id),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// --- 2. SEKME: KULÜP OLUŞTURMA ---
+class ClubCreator extends StatefulWidget {
+  const ClubCreator({super.key});
+
+  @override
+  State<ClubCreator> createState() => _ClubCreatorState();
+}
+
+class _ClubCreatorState extends State<ClubCreator> {
+  final _nameController = TextEditingController();
+  final _shortNameController = TextEditingController();
+  final _descController = TextEditingController();
+  final _categoryController = TextEditingController();
+  
+  Future<void> _createClub() async {
+    if(_nameController.text.isEmpty) return;
+
+    // Otomatik ID oluşturmak yerine kulüp adından ID türetebilir veya auto-id kullanabilirsin.
+    // Burada auto-id kullanıyoruz.
+    await FirebaseFirestore.instance.collection('clubs').add({
+      'clubName': _nameController.text.trim(),
+      'shortName': _shortNameController.text.trim().toUpperCase(),
+      'description': _descController.text.trim(),
+      'category': _categoryController.text.trim(),
+      'icon': 'groups', // Varsayılan ikon
+      'theme': {
+        'primaryColor': '0xFF00BCD4', // Varsayılan Cyan
+        'secondaryColor': '0xFFB2EBF2'
+      },
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Formu temizle
+    _nameController.clear();
+    _shortNameController.clear();
+    _descController.clear();
+    _categoryController.clear();
+
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yeni Kulüp Oluşturuldu!")));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 600, // Genişliği sınırla (Web'de çok yayılmasın)
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          children: [
+            const Text("Yeni Kulüp Oluştur", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 30),
+            TextField(controller: _nameController, decoration: const InputDecoration(labelText: "Kulüp Tam Adı", border: OutlineInputBorder())),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(child: TextField(controller: _shortNameController, decoration: const InputDecoration(labelText: "Kısaltma (Örn: GİK)", border: OutlineInputBorder()))),
+                const SizedBox(width: 15),
+                Expanded(child: TextField(controller: _categoryController, decoration: const InputDecoration(labelText: "Kategori", border: OutlineInputBorder()))),
+              ],
+            ),
+            const SizedBox(height: 15),
+            TextField(controller: _descController, maxLines: 3, decoration: const InputDecoration(labelText: "Kulüp Açıklaması", border: OutlineInputBorder())),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _createClub,
+                icon: const Icon(Icons.add_circle),
+                label: const Text("Kulübü Sisteme Ekle"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.black87, foregroundColor: Colors.white),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
