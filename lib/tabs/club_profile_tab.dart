@@ -2,15 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:unihub/admin_panel.dart';
-import 'package:unihub/widget/info_card.dart'; // 1. Aşamada oluşturduğumuz widget
-import 'package:unihub/widget/badge_grid.dart'; // 1. Aşamada oluşturduğumuz widget
+import 'package:unihub/widget/info_card.dart';
+import 'package:unihub/widget/badge_grid.dart';
 
-class ClubProfileTab extends StatelessWidget {
+class ClubProfileTab extends StatefulWidget {
   final String kulupId;
   final String kulupIsmi;
   final Color primaryColor;
-  final Function(int)
-  onTabChanged; // "Üye Ol" butonuna basınca sayfayı değiştirmek için
+  final Function(int) onTabChanged;
 
   const ClubProfileTab({
     super.key,
@@ -20,6 +19,11 @@ class ClubProfileTab extends StatelessWidget {
     required this.onTabChanged,
   });
 
+  @override
+  State<ClubProfileTab> createState() => _ClubProfileTabState();
+}
+
+class _ClubProfileTabState extends State<ClubProfileTab> {
   String _formatDate(Timestamp? timestamp) {
     if (timestamp == null) return "Tarih Yok";
     DateTime date = timestamp.toDate();
@@ -59,6 +63,133 @@ class ClubProfileTab extends StatelessWidget {
     }
   }
 
+  // --- KULÜPTEN AYRILMA ALGORİTMASI ---
+  Future<void> _leaveClub() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1. Onay Penceresi
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Kulüpten Ayrıl"),
+        content: const Text(
+          "Bu kulüpten ayrılmak istediğinize emin misiniz?\n\n"
+          "Eğer 'Başkan' iseniz, yetkiniz otomatik olarak sıradaki en yetkili üyeye devredilecektir.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("İptal"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Evet, Ayrıl"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final clubRef = FirebaseFirestore.instance
+          .collection('clubs')
+          .doc(widget.kulupId);
+      final membersRef = clubRef.collection('members');
+      final myDocRef = membersRef.doc(user.uid);
+
+      // Rolümü öğren
+      final myDoc = await myDocRef.get();
+      if (!myDoc.exists) return;
+      final myRole = myDoc.data()?['role'];
+
+      // A) EĞER BAŞKAN DEĞİLSEM -> DİREKT ÇIK
+      if (myRole != 'baskan') {
+        await myDocRef.delete();
+        if (mounted) {
+          Navigator.of(context).pop(); // Ekrandan çık
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text("Kulüpten ayrıldınız.")));
+        }
+        return;
+      }
+
+      // B) EĞER BAŞKANSAM -> DEVRET VE ÇIK
+      DocumentSnapshot? newLeader;
+
+      // 1. Aday: Başkan Yardımcıları
+      var snapshot = await membersRef
+          .where('role', isEqualTo: 'baskan_yardimcisi')
+          .limit(1)
+          .get();
+      if (snapshot.docs.isNotEmpty) newLeader = snapshot.docs.first;
+
+      // 2. Aday: Koordinatörler
+      if (newLeader == null) {
+        snapshot = await membersRef
+            .where('role', isEqualTo: 'koordinator')
+            .limit(1)
+            .get();
+        if (snapshot.docs.isNotEmpty) newLeader = snapshot.docs.first;
+      }
+
+      // 3. Aday: Üyeler (Kendim hariç)
+      if (newLeader == null) {
+        snapshot = await membersRef.where('role', isEqualTo: 'uye').get();
+        for (var doc in snapshot.docs) {
+          if (doc.id != user.uid) {
+            newLeader = doc;
+            break;
+          }
+        }
+      }
+
+      if (newLeader != null) {
+        // Batch işlemi: Ben silinirim, o başkan olur (Atomik işlem)
+        final batch = FirebaseFirestore.instance.batch();
+        batch.delete(myDocRef); // Beni sil
+        batch.update(newLeader.reference, {'role': 'baskan'}); // Onu başkan yap
+
+        await batch.commit();
+
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "Ayrıldınız. Yeni başkan: ${newLeader['userName'] ?? 'Belirlendi'}",
+              ),
+            ),
+          );
+        }
+      } else {
+        // C) KİMSE YOKSA -> KULÜBÜ SİL
+        // (Tek üye bendim ve çıktım)
+        await clubRef.delete();
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Kulüp feshedildi (Son üye ayrıldı)."),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -69,7 +200,7 @@ class ClubProfileTab extends StatelessWidget {
       child: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('clubs')
-            .doc(kulupId)
+            .doc(widget.kulupId)
             .collection('members')
             .doc(user.uid)
             .snapshots(),
@@ -83,7 +214,7 @@ class ClubProfileTab extends StatelessWidget {
               ? snapshot.data!.data() as Map<String, dynamic>
               : null;
           String role = memberData?['role'] ?? 'uye';
-          var roleStyle = _getRoleStyle(role, primaryColor);
+          var roleStyle = _getRoleStyle(role, widget.primaryColor);
 
           return Column(
             children: [
@@ -120,7 +251,7 @@ class ClubProfileTab extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 50,
                           fontWeight: FontWeight.bold,
-                          color: primaryColor,
+                          color: widget.primaryColor,
                         ),
                       ),
                     ),
@@ -190,9 +321,9 @@ class ClubProfileTab extends StatelessWidget {
                       const SizedBox(height: 15),
                       ElevatedButton(
                         onPressed: () =>
-                            onTabChanged(1), // Etkinlikler sekmesine git
+                            widget.onTabChanged(1), // Etkinlikler sekmesine git
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
+                          backgroundColor: widget.primaryColor,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text("Üyelik Sayfasına Git"),
@@ -244,7 +375,7 @@ class ClubProfileTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 30),
 
-                // Yönetim Paneli Butonu
+                // Yönetim Paneli Butonu (Sadece Yetkililer)
                 if (role == 'baskan' ||
                     role == 'baskan_yardimcisi' ||
                     role == 'koordinator')
@@ -256,9 +387,9 @@ class ClubProfileTab extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (context) => AdminPanel(
-                              kulupId: kulupId,
-                              kulupismi: kulupIsmi,
-                              primaryColor: primaryColor,
+                              kulupId: widget.kulupId,
+                              kulupismi: widget.kulupIsmi,
+                              primaryColor: widget.primaryColor,
                               currentUserRole: role,
                             ),
                           ),
@@ -283,23 +414,43 @@ class ClubProfileTab extends StatelessWidget {
                 // Rozetler (Widget)
                 Row(
                   children: [
-                    Icon(Icons.military_tech, color: primaryColor),
+                    Icon(Icons.military_tech, color: widget.primaryColor),
                     const SizedBox(width: 10),
                     Text(
                       "Rozetlerim",
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: primaryColor,
+                        color: widget.primaryColor,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 15),
                 BadgeGrid(
-                  clubId: kulupId,
+                  clubId: widget.kulupId,
                   userId: user.uid,
-                  themeColor: primaryColor,
+                  themeColor: widget.primaryColor,
+                ),
+
+                const SizedBox(height: 40),
+
+                // YENİ: KULÜPTEN AYRILMA BUTONU
+                OutlinedButton.icon(
+                  onPressed: _leaveClub,
+                  icon: const Icon(Icons.exit_to_app, color: Colors.red),
+                  label: const Text("Kulüpten Ayrıl"),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: 100),

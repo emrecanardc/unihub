@@ -5,11 +5,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 class AdminMembersTab extends StatefulWidget {
   final String kulupId;
   final String currentUserRole;
+  final bool isSuperAdmin; // YENİ: Yetki kontrolü
 
   const AdminMembersTab({
     super.key,
     required this.kulupId,
     required this.currentUserRole,
+    this.isSuperAdmin = false, // Varsayılan false
   });
 
   @override
@@ -77,6 +79,83 @@ class _AdminMembersTabState extends State<AdminMembersTab> {
     if (mounted) Navigator.pop(context);
   }
 
+  // --- YENİ: SÜPER ADMIN İÇİN BAŞKAN ATAMA ---
+  Future<void> _forceAssignPresidency(
+    String targetUserId,
+    String targetUserName,
+  ) async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("👑 Başkanlığı Ata"),
+        content: Text(
+          "Dikkat! '$targetUserName' adlı üyeyi KULÜP BAŞKANI yapmak üzeresiniz.\n\n"
+          "Bu işlem sonucunda:\n"
+          "1. Mevcut başkan (varsa) otomatik olarak 'Üye' statüsüne düşürülecek.\n"
+          "2. Bu kişi yeni başkan olacak.\n\n"
+          "Onaylıyor musunuz?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("İptal"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Evet, Ata"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final batch = FirebaseFirestore.instance.batch();
+
+        // 1. Mevcut başkanı bul ve üye yap
+        var currentPresident = await FirebaseFirestore.instance
+            .collection('clubs')
+            .doc(widget.kulupId)
+            .collection('members')
+            .where('role', isEqualTo: 'baskan')
+            .get();
+
+        for (var doc in currentPresident.docs) {
+          batch.update(doc.reference, {'role': 'uye'});
+        }
+
+        // 2. Yeni başkanı ata
+        var targetRef = FirebaseFirestore.instance
+            .collection('clubs')
+            .doc(widget.kulupId)
+            .collection('members')
+            .doc(targetUserId);
+        batch.update(targetRef, {'role': 'baskan'});
+
+        await batch.commit();
+
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("$targetUserName artık Kulüp Başkanı!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // --- ESKİ: BAŞKANIN KENDİ YETKİSİNİ DEVRETMESİ ---
   Future<void> _transferPresidency(
     String targetUserId,
     String targetUserName,
@@ -125,7 +204,7 @@ class _AdminMembersTabState extends State<AdminMembersTab> {
         await batch.commit();
         if (mounted) {
           Navigator.pop(context);
-          Navigator.pop(context); // Panelden çık
+          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text("Başkanlık devredildi."),
@@ -143,7 +222,9 @@ class _AdminMembersTabState extends State<AdminMembersTab> {
 
   void _showRoleDialog(String userId, String userName, String currentRole) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == currentUserId) {
+
+    // Kendi rolünü değiştiremez (Sadece normal kullanıcılar için geçerli, Süper Admin başkasını düzenliyorsa sorun yok)
+    if (userId == currentUserId && !widget.isSuperAdmin) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -159,6 +240,7 @@ class _AdminMembersTabState extends State<AdminMembersTab> {
       );
       return;
     }
+
     showDialog(
       context: context,
       builder: (context) => SimpleDialog(
@@ -176,7 +258,32 @@ class _AdminMembersTabState extends State<AdminMembersTab> {
             onPressed: () => _changeMemberRole(userId, 'baskan_yardimcisi'),
             child: const Text("Başkan Yardımcısı Yap"),
           ),
-          if (widget.currentUserRole == 'baskan') ...[
+
+          // --- SÜPER ADMIN İÇİN ÖZEL SEÇENEK ---
+          if (widget.isSuperAdmin) ...[
+            const Divider(),
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context);
+                _forceAssignPresidency(userId, userName);
+              },
+              child: const Row(
+                children: [
+                  Icon(Icons.verified_user, color: Colors.red, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    "👑 Başkan Yap (Zorla)",
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ]
+          // --- NORMAL BAŞKAN İÇİN DEVRETME ---
+          else if (widget.currentUserRole == 'baskan') ...[
             const Divider(),
             SimpleDialogOption(
               onPressed: () {

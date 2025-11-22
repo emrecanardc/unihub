@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:unihub/register.dart';
-import 'package:unihub/widget/widget_Test2.dart'; // Ana sayfan
 import 'package:unihub/main_hub.dart';
 
 class girisEkrani extends StatefulWidget {
@@ -14,8 +13,15 @@ class girisEkrani extends StatefulWidget {
 class _girisEkraniState extends State<girisEkrani> {
   final TextEditingController _numarakontrol = TextEditingController();
   final TextEditingController _sifrekontrol = TextEditingController();
-  final String _oguDomain = "@ogrenci.ogu.edu.tr";
 
+  // Üniversite Domain Listesi
+  final Map<String, String> _universities = {
+    "ESOGU": "@ogrenci.ogu.edu.tr",
+    "Anadolu": "@anadolu.edu.tr",
+    "ESTÜ": "@ogrenci.estu.edu.tr",
+  };
+
+  String _selectedUniKey = "ESOGU"; // Varsayılan seçim
   bool _isLoading = false;
   bool _isObscured = true;
 
@@ -34,48 +40,18 @@ class _girisEkraniState extends State<girisEkrani> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
-    final String tamEposta = '${_numarakontrol.text.trim()}$_oguDomain';
+    // Seçilen üniversitenin domainini alıp birleştiriyoruz
+    final String domain = _universities[_selectedUniKey]!;
+    final String tamEposta = '${_numarakontrol.text.trim()}$domain';
 
     try {
-      // 1. Giriş Yapmayı Dene
-      UserCredential userCredential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(
-            email: tamEposta,
-            password: _sifrekontrol.text.trim(),
-          );
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: tamEposta,
+        password: _sifrekontrol.text.trim(),
+      );
 
-      // 2. E-POSTA ONAY KONTROLÜ (Mail Verification Check)
-      /* if (userCredential.user != null) {
-        if (!userCredential.user!.emailVerified) {
-          // Eğer onaylı değilse oturumu kapat
-          await FirebaseAuth.instance.signOut();
-
-          if (context.mounted) {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text("E-posta Onaylanmadı"),
-                content: const Text(
-                  "Giriş yapabilmek için lütfen e-postanıza gelen doğrulama linkine tıklayınız.\n(Spam/Gereksiz klasörünü kontrol etmeyi unutmayın)",
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("Tamam"),
-                  ),
-                ],
-              ),
-            );
-          }
-          return; // Fonksiyondan çık, ana sayfaya gitme
-        }
-      }
-      */
-      // 3. Her şey tamamsa Ana Sayfaya Git
       if (context.mounted) {
         Navigator.pushReplacement(
           context,
@@ -88,21 +64,14 @@ class _girisEkraniState extends State<girisEkrani> {
         hataMesaji = "Okul numarası veya şifre hatalı.";
       } else if (e.code == 'wrong-password') {
         hataMesaji = "Şifre yanlış.";
-      } else if (e.code == 'too-many-requests') {
-        hataMesaji = "Çok fazla denediniz, lütfen biraz bekleyin.";
       }
-
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(hataMesaji), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (context.mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (context.mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -110,178 +79,209 @@ class _girisEkraniState extends State<girisEkrani> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 100),
-            const Icon(Icons.book, size: 80, color: Colors.cyan),
-            const SizedBox(height: 16),
-            const Text(
-              "Tekrar Hoş Geldin!",
-              style: TextStyle(
-                fontSize: 30,
-                color: Colors.cyan,
-                fontWeight: FontWeight.w700,
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.school, size: 80, color: Colors.cyan),
+              const SizedBox(height: 16),
+              const Text(
+                "Tekrar Hoş Geldin!",
+                style: TextStyle(
+                  fontSize: 30,
+                  color: Colors.cyan,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Hesabına giriş yap",
-              style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-            ),
-            const SizedBox(height: 40),
+              const SizedBox(height: 8),
+              Text(
+                "Giriş yapmak için bilgilerini gir",
+                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+              ),
+              const SizedBox(height: 40),
 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Öğrenci Numarası",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF2C3E50),
-                    ),
+              // --- BİRLEŞTİRİLMİŞ GİRİŞ ALANI ---
+              // Öğrenci Numarası TextField'ının içine Dropdown'ı gömdük
+              TextField(
+                controller: _numarakontrol,
+                keyboardType: TextInputType.text,
+                decoration: InputDecoration(
+                  hintText: "Öğrenci No",
+                  prefixIcon: const Icon(
+                    Icons.badge_outlined,
+                    color: Colors.grey,
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _numarakontrol,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      hintText: "Okul Numaranız",
-                      prefixIcon: const Icon(
-                        Icons.school_outlined,
-                        color: Colors.grey,
-                      ),
-                      suffixText: _oguDomain,
-                      suffixStyle: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 16.0,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                        borderSide: const BorderSide(
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 18,
+                    horizontal: 12,
+                  ),
+
+                  // SAĞ TARAFA GÖMÜLÜ DROPDOWN
+                  suffixIcon: Container(
+                    margin: const EdgeInsets.only(right: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.cyan.withOpacity(
+                        0.1,
+                      ), // Hafif mavi arka plan
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedUniKey,
+                        icon: const Icon(
+                          Icons.arrow_drop_down,
                           color: Colors.cyan,
-                          width: 2.0,
                         ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  const Text(
-                    "Şifre",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF2C3E50),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sifrekontrol,
-                    obscureText: _isObscured,
-                    decoration: InputDecoration(
-                      hintText: "••••••••••",
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                        color: Colors.grey,
-                      ),
-                      suffixIcon: IconButton(
-                        onPressed: () {
+                        style: const TextStyle(
+                          color: Colors.cyan,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        // Açılır menü arka planı
+                        dropdownColor: Colors.white,
+                        items: _universities.keys.map((String key) {
+                          return DropdownMenuItem<String>(
+                            value: key,
+                            child: Text(
+                              key,
+                            ), // Sadece okul adı (ESOGU vb.) görünür
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
                           setState(() {
-                            _isObscured = !_isObscured;
+                            _selectedUniKey = newValue!;
                           });
                         },
-                        icon: Icon(
-                          _isObscured ? Icons.visibility_off : Icons.visibility,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 16.0,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                        borderSide: const BorderSide(
-                          color: Colors.cyan,
-                          width: 2.0,
-                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  // Kenarlık ayarları
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(
+                      color: Colors.cyan,
+                      width: 2.0,
+                    ),
+                  ),
+                ),
+              ),
 
-                  _isLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(color: Colors.cyan),
-                        )
-                      : ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.cyan,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.0),
-                            ),
-                          ),
-                          onPressed: _girisYap,
-                          child: const Text(
-                            "Giriş Yap",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+              // Bilgilendirme Metni (Hangi mail uzantısının seçildiğini gösterir)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0, left: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Seçili uzantı: ${_universities[_selectedUniKey]}",
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ),
 
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Hesabın yok mu?",
-                        style: TextStyle(color: Colors.grey[700]),
+              const SizedBox(height: 20),
+
+              // --- ŞİFRE ---
+              TextField(
+                controller: _sifrekontrol,
+                obscureText: _isObscured,
+                decoration: InputDecoration(
+                  hintText: "••••••••••",
+                  prefixIcon: const Icon(
+                    Icons.lock_outline,
+                    color: Colors.grey,
+                  ),
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(() => _isObscured = !_isObscured),
+                    icon: Icon(
+                      _isObscured ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 18),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(
+                      color: Colors.cyan,
+                      width: 2.0,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+
+              _isLoading
+                  ? const CircularProgressIndicator(color: Colors.cyan)
+                  : ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.cyan,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(
+                          double.infinity,
+                          55,
+                        ), // Biraz daha yüksek buton
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                        ),
+                        elevation: 2,
                       ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const kayitEkrani(),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          "Kayıt Ol",
-                          style: TextStyle(
-                            color: Colors.cyan,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      onPressed: _girisYap,
+                      child: const Text(
+                        "Giriş Yap",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
+                    ),
+
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Hesabın yok mu?",
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const kayitEkrani(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      "Kayıt Ol",
+                      style: TextStyle(
+                        color: Colors.cyan,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

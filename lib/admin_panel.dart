@@ -9,6 +9,7 @@ class AdminPanel extends StatefulWidget {
   final String kulupismi;
   final Color primaryColor;
   final String currentUserRole;
+  final bool isSuperAdmin; // YENİ
 
   const AdminPanel({
     super.key,
@@ -16,6 +17,7 @@ class AdminPanel extends StatefulWidget {
     required this.kulupismi,
     required this.primaryColor,
     required this.currentUserRole,
+    this.isSuperAdmin = false, // Varsayılan false
   });
 
   @override
@@ -99,10 +101,12 @@ class _AdminPanelState extends State<AdminPanel> with TickerProviderStateMixin {
     }
 
     if (widget.currentUserRole == 'baskan') {
+      // isSuperAdmin bilgisini buraya iletiyoruz 👇
       views.add(
         AdminMembersTab(
           kulupId: widget.kulupId,
           currentUserRole: widget.currentUserRole,
+          isSuperAdmin: widget.isSuperAdmin,
         ),
       );
       views.add(

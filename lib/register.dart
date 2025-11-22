@@ -9,15 +9,18 @@ class kayitEkrani extends StatefulWidget {
 }
 
 class _kayitEkraniState extends State<kayitEkrani> {
-  // Form verilerini tutacak kontrolcüler
   final TextEditingController _adSoyadController = TextEditingController();
   final TextEditingController _okulNoController = TextEditingController();
   final TextEditingController _sifreController = TextEditingController();
 
-  // Okul domaini sabit
-  final String _oguDomain = "@ogrenci.ogu.edu.tr";
+  // Üniversite Listesi
+  final Map<String, String> _universities = {
+    "ESOGU": "@ogrenci.ogu.edu.tr",
+    "Anadolu": "@anadolu.edu.tr",
+    "ESTÜ": "@ogrenci.estu.edu.tr",
+  };
 
-  // Yükleniyor animasyonu için değişken
+  String _selectedUniKey = "ESOGU"; // Varsayılan
   bool _isLoading = false;
 
   @override
@@ -28,9 +31,7 @@ class _kayitEkraniState extends State<kayitEkrani> {
     super.dispose();
   }
 
-  // Kayıt Ol Fonksiyonu
   Future<void> _kayitOl() async {
-    // 1. Boş alan kontrolü
     if (_adSoyadController.text.isEmpty ||
         _okulNoController.text.isEmpty ||
         _sifreController.text.isEmpty) {
@@ -40,46 +41,42 @@ class _kayitEkraniState extends State<kayitEkrani> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
-    // 2. E-posta oluşturma (Okul no + Domain)
-    final String tamEposta = '${_okulNoController.text.trim()}$_oguDomain';
+    // Seçilen üniversiteye göre mail oluştur
+    final String domain = _universities[_selectedUniKey]!;
+    final String tamEposta = '${_okulNoController.text.trim()}$domain';
 
     try {
-      // 3. Firebase'de kullanıcı oluşturma
       UserCredential userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
             email: tamEposta,
             password: _sifreController.text.trim(),
           );
 
-      // 4. İsim bilgisini ekleme
       await userCredential.user?.updateDisplayName(
         _adSoyadController.text.trim(),
       );
 
-      // 5. E-POSTA DOĞRULAMA LİNKİ GÖNDERME
+      // E-posta doğrulama
       if (userCredential.user != null && !userCredential.user!.emailVerified) {
         await userCredential.user!.sendEmailVerification();
       }
 
       if (context.mounted) {
-        // Başarılı Dialog Göster
         showDialog(
           context: context,
-          barrierDismissible: false, // Boşluğa basınca kapanmasın
+          barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: const Text("Doğrulama Maili Gönderildi"),
             content: Text(
-              "$tamEposta adresine doğrulama linki gönderdik.\n\nLütfen mail kutunuzu (Gereksiz/Spam klasörü dahil) kontrol edin ve linke tıkladıktan sonra giriş yapın.",
+              "$tamEposta adresine doğrulama linki gönderdik.\n\nLütfen mail kutunuzu kontrol edin.",
             ),
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(context); // Dialogu kapat
-                  Navigator.pop(context); // Login ekranına dön
+                  Navigator.pop(context);
+                  Navigator.pop(context);
                 },
                 child: const Text("Tamam"),
               ),
@@ -88,24 +85,19 @@ class _kayitEkraniState extends State<kayitEkrani> {
         );
       }
     } on FirebaseAuthException catch (e) {
-      String hataMesaji = "Bir hata oluştu";
-      if (e.code == 'email-already-in-use') {
-        hataMesaji = "Bu okul numarası zaten kayıtlı.";
-      } else if (e.code == 'weak-password') {
-        hataMesaji = "Şifre çok zayıf (en az 6 karakter olmalı).";
-      }
+      String hata = "Hata oluştu";
+      if (e.code == 'email-already-in-use')
+        hata = "Bu numara zaten kayıtlı.";
+      else if (e.code == 'weak-password')
+        hata = "Şifre zayıf.";
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(hataMesaji), backgroundColor: Colors.red),
+          SnackBar(content: Text(hata), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (context.mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (context.mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -122,7 +114,6 @@ class _kayitEkraniState extends State<kayitEkrani> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.person_add_alt_1, size: 80, color: Colors.cyan),
               const SizedBox(height: 16),
@@ -134,14 +125,9 @@ class _kayitEkraniState extends State<kayitEkrani> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                "ÜniHub hesabını oluştur",
-                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-              ),
               const SizedBox(height: 40),
 
-              // Ad Soyad
+              // AD SOYAD
               _buildTextField(
                 controller: _adSoyadController,
                 label: "Ad Soyad",
@@ -150,18 +136,52 @@ class _kayitEkraniState extends State<kayitEkrani> {
               ),
               const SizedBox(height: 20),
 
-              // Okul No
-              _buildTextField(
-                controller: _okulNoController,
-                label: "Öğrenci Numarası",
-                hint: "Okul Numaranız",
-                icon: Icons.school_outlined,
-                isNumber: true,
-                suffix: _oguDomain,
+              // ÜNİVERSİTE SEÇİMİ
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text(
+                      "Üniversite",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedUniKey,
+                        isExpanded: true,
+                        items: _universities.keys.map((String key) {
+                          return DropdownMenuItem<String>(
+                            value: key,
+                            child: Text(key),
+                          );
+                        }).toList(),
+                        onChanged: (val) =>
+                            setState(() => _selectedUniKey = val!),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
 
-              // Şifre
+              // OKUL NO
+              _buildTextField(
+                controller: _okulNoController,
+                label: "Öğrenci No / Kullanıcı Adı",
+                hint: "Numaranız",
+                icon: Icons.school_outlined,
+              ),
+              const SizedBox(height: 20),
+
+              // ŞİFRE
               _buildTextField(
                 controller: _sifreController,
                 label: "Şifre",
@@ -171,7 +191,7 @@ class _kayitEkraniState extends State<kayitEkrani> {
               ),
               const SizedBox(height: 30),
 
-              // Buton
+              // KAYIT BUTONU
               _isLoading
                   ? const CircularProgressIndicator(color: Colors.cyan)
                   : ElevatedButton(
@@ -180,7 +200,7 @@ class _kayitEkraniState extends State<kayitEkrani> {
                         foregroundColor: Colors.white,
                         minimumSize: const Size(double.infinity, 50),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12.0),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       onPressed: _kayitOl,
@@ -192,27 +212,6 @@ class _kayitEkraniState extends State<kayitEkrani> {
                         ),
                       ),
                     ),
-
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Zaten hesabın var mı?",
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      "Giriş Yap",
-                      style: TextStyle(
-                        color: Colors.cyan,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -226,8 +225,6 @@ class _kayitEkraniState extends State<kayitEkrani> {
     required String hint,
     required IconData icon,
     bool isPassword = false,
-    bool isNumber = false,
-    String? suffix,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,22 +243,14 @@ class _kayitEkraniState extends State<kayitEkrani> {
         TextField(
           controller: controller,
           obscureText: isPassword,
-          keyboardType: isNumber ? TextInputType.number : TextInputType.text,
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(icon, color: Colors.grey),
-            suffixText: suffix,
-            suffixStyle: const TextStyle(color: Colors.grey, fontSize: 14),
             filled: true,
             fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(vertical: 16.0),
-            enabledBorder: OutlineInputBorder(
+            border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12.0),
               borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12.0),
-              borderSide: const BorderSide(color: Colors.cyan, width: 2.0),
             ),
           ),
         ),

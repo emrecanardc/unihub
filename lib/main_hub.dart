@@ -12,32 +12,35 @@ class MainHub extends StatefulWidget {
 }
 
 class _MainHubState extends State<MainHub> {
-  int _pageIndex = 1; // Başlangıçta "Kulüplerim"
+  int _pageIndex = 1; // Başlangıçta ortadaki "Kulüplerim" sekmesi açık olsun
   final GlobalKey<CurvedNavigationBarState> _bottomNavigationKey = GlobalKey();
 
+  // Sayfa Listesi
   final List<Widget> _pages = [
-    const DiscoverClubsTab(), // Sol: Keşfet
-    const MyClubsTab(), // Orta: Kulüplerim
-    const UserProfileTab(), // Sağ: Profil
+    const DiscoverClubsTab(), // 0: Sol - Keşfet
+    const MyClubsTab(), // 1: Orta - Kulüplerim
+    const UserProfileTab(), // 2: Sağ - Profil
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Arka plan rengi tüm sayfalarda ortak olsun
       backgroundColor: const Color(0xFFF7F8FC),
-      body: _pages[_pageIndex],
+
+      // Alt Menü (Navigation Bar)
       bottomNavigationBar: CurvedNavigationBar(
         key: _bottomNavigationKey,
         index: _pageIndex,
         height: 60.0,
         items: const <Widget>[
-          Icon(Icons.search, size: 30, color: Colors.white),
-          Icon(Icons.home, size: 30, color: Colors.white),
-          Icon(Icons.person, size: 30, color: Colors.white),
+          Icon(Icons.search, size: 30, color: Colors.white), // Sol: Keşfet
+          Icon(Icons.home, size: 30, color: Colors.white), // Orta: Kulüplerim
+          Icon(Icons.person, size: 30, color: Colors.white), // Sağ: Profil
         ],
         color: Colors.cyan,
         buttonBackgroundColor: Colors.cyan.shade300,
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: Colors.transparent, // Sayfa içeriğiyle uyumlu olsun
         animationCurve: Curves.easeInOut,
         animationDuration: const Duration(milliseconds: 400),
         onTap: (index) {
@@ -47,6 +50,10 @@ class _MainHubState extends State<MainHub> {
         },
         letIndexChange: (index) => true,
       ),
+
+      // Seçili Sayfa İçeriği
+      // Burada "IndexedStack" kullanarak sayfaların durumunu koruyoruz (scroll pozisyonu vb.)
+      body: IndexedStack(index: _pageIndex, children: _pages),
     );
   }
 }
